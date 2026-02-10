@@ -1,0 +1,77 @@
+# --- 런타임: FastAPI 서버 및 HTTP 클라이언트 ---
+# FastAPI: 비동기 웹 API 프레임워크 (라우팅, 의존성 주입)
+fastapi
+# Uvicorn: ASGI 서버 (production/standard 옵션 권장)
+uvicorn[standard]
+# HTTPX: 비동기/동기 HTTP 클라이언트 (외부 LLM API 호출 등)
+httpx
+
+# --- 구성 및 설정 ---
+# python-dotenv: .env 파일에서 환경변수 로딩
+python-dotenv
+# pydantic / pydantic-settings: 데이터 검증 및 설정 관리
+pydantic
+pydantic-settings
+
+# --- 템플릿 및 업로드 ---
+# Jinja2: HTML 템플릿 렌더링 (응답 템플릿 등)
+jinja2
+# python-multipart: FastAPI에서 파일 업로드 처리
+python-multipart
+
+# --- 임베딩 / ML 코어 ---
+# numpy: 수치연산 필수 라이브러리
+numpy
+# sentence-transformers: 문장 임베딩 생성 (로컬 임베딩 모델)
+sentence-transformers
+# transformers: 로컬 모델을 직접 쓰려면 필요 (외부 API만 쓰면 선택적)
+transformers
+# scikit-learn: 벡터 유틸리티/유사도 계산 등에서 유용 (선택적)
+scikit-learn
+
+# --- 벡터 저장소 ---
+# faiss-cpu: 로컬 벡터 인덱스(FAISS) - 빠른 근사 최근접 이웃 검색
+faiss-cpu
+
+# --- 문서 처리 및 OCR (인제스트) ---
+# pypdf: PDF 파싱(가벼운 파서)
+pypdf
+# pdfplumber: PDF 텍스트 추출(복잡한 레이아웃에 유리)
+pdfplumber
+# pdf2image: PDF 페이지를 이미지로 변환 (OCR 전처리)
+pdf2image
+# pytesseract: OCR (이미지에서 텍스트 추출)
+pytesseract
+# Pillow: 이미지 처리
+Pillow
+# python-pptx: PPTX 파일에서 텍스트/슬라이드 추출
+python-pptx
+
+# --- 외부 LLM / 모델 허브 / 웹 크롤링 ---
+# requests: 간단한 HTTP 요청 (동기)
+requests
+# huggingface-hub: 허깅페이스 모델/허브 통합 (모델 메타데이터, 다운로드 등)
+huggingface-hub
+# beautifulsoup4: HTML 파싱 (웹 스크래핑)
+beautifulsoup4
+# serpapi: 웹 검색 (SERP 기반 검색으로 추가 컨텍스트 수집)
+serpapi
+
+# --- 테스트 / 개발 (개발 의존성) ---
+# pytest: 테스트 러너
+pytest
+# pytest-asyncio: 비동기 테스트 지원
+pytest-asyncio
+# pytest-cov / pytest-html: 테스트 커버리지 및 리포트
+pytest-cov
+pytest-html
+
+boto3
+gunicorn
+
+# 참고:
+# - transformers는 로컬 LLM을 직접 실행하거나 토크나이저가 필요할 때만 필수입니다.
+# - torch(또는 CPU/GPU용 torch 빌드)는 sentence-transformers 설치 시 필요할 수 있으므로
+#   플랫폼에 따라 별도 설치를 권장합니다 (특히 macOS / M1/arm 환경은 적합한 wheel 권장).
+# - faiss-cpu는 macOS에서 빌드 이슈가 있을 수 있으므로 필요시 conda를 통한 설치 고려.
+# - 개발/테스트 전용 패키지는 requirements-dev.txt로 분리하는 것을 권장합니다.

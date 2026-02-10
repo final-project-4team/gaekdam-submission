@@ -1,0 +1,59 @@
+# -----------------------------
+# VCS / IDE / OS
+# -----------------------------
+.git
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# -----------------------------
+# Secrets (이미지에 절대 포함 금지)
+# -----------------------------
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# -----------------------------
+# Python cache / venv
+# -----------------------------
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+pip-wheel-metadata/
+
+# -----------------------------
+# Test / Coverage (배포 이미지에 불필요)
+# -----------------------------
+**/tests/
+.coverage
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# -----------------------------
+# Node / Frontend artifacts (있다면)
+# -----------------------------
+node_modules/
+dist/
+build/
+
+# -----------------------------
+# Local model / HF cache (호스트 캐시 제외)
+# - 이 프로젝트는 Docker build 단계에서 모델을 다운로드하여 이미지에 포함하므로
+#   호스트에 존재하는 캐시는 빌드 컨텍스트에서 제외해도 문제 없음
+# -----------------------------
+hf_cache/
+.hf/
+**/.hf/
+app/.hf/
+.cache/
+**/.cache/

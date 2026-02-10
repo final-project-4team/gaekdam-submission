@@ -1,0 +1,138 @@
+name: Deploy FastAPI to ECS (ECR + Register Task)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy-fastapi:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      # ECR repository for FastAPI image
+      ECR_REPOSITORY_FASTAPI: ${{ secrets.ECR_REPOSITORY_FASTAPI }}
+      CLUSTER_NAME: ${{ secrets.CLUSTER_NAME }}
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
+      TASK_FAMILY: ${{ secrets.TASK_FAMILY }}
+      # task role that containers will assume
+      TASK_ROLE_ARN: ${{ secrets.TASK_ROLE_ARN }}
+      # execution role used by ECS agent
+      EXECUTION_ROLE_ARN: ${{ secrets.EXECUTION_ROLE_ARN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # AWS 자격증명 구성: GitHub Secrets에 저장된 AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY를 사용하여
+      # AWS 리소스에 접근할 수 있도록 자격증명을 설정합니다.
+      # Job-level 환경 변수 (CI 런타임에서 사용됨)
+      # - AWS_REGION / AWS_ACCOUNT_ID: AWS 계정 및 리전 정보
+      # - ECR_REPOSITORY_FASTAPI: ECR 내 저장할 리포지토리명
+      # - CLUSTER_NAME / SERVICE_NAME: ECS에서 사용할 클러스터 및 서비스명
+      # - TASK_FAMILY: 등록할 task definition의 family 이름
+      # - TASK_ROLE_ARN / EXECUTION_ROLE_ARN: 태스크와 ECS 에이전트 실행에 필요한 IAM 역할 ARN
+      # 이 값들은 모두 GitHub Secrets로 안전하게 제공되어야 합니다.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Validate required secrets and environment variables early to provide clearer errors
+      - name: Validate required secrets
+        run: |
+          set -eu
+          : "${{ secrets.AWS_REGION }}" || true
+          : "${{ secrets.AWS_ACCOUNT_ID }}" || true
+          : "${{ secrets.ECR_REPOSITORY_FASTAPI }}" || true
+          : "${{ secrets.AWS_ACCESS_KEY_ID }}" || true
+          : "${{ secrets.AWS_SECRET_ACCESS_KEY }}" || true
+          # These are job-level envs mapped from secrets; ensure they are set
+          : "${TASK_FAMILY:?Missing TASK_FAMILY (set as a secret or variable)}"
+          : "${CLUSTER_NAME:?Missing CLUSTER_NAME (set as a secret or variable)}"
+          : "${SERVICE_NAME:?Missing SERVICE_NAME (set as a secret or variable)}"
+          echo "All required secrets/envs appear present (note: empty secret values are allowed but will fail later if required by AWS)."
+
+      # ECR 로그인: docker push 권한을 위해 GitHub 액션이 ECR에 로그인합니다.
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image to ECR (fastapi) with GHA cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.fastapi
+          platforms: linux/amd64
+          push: true
+          tags: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_FASTAPI }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Export IMAGE_URI for next steps
+        run: |
+          echo "IMAGE_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY_FASTAPI }}:${{ github.sha }}" >> $GITHUB_ENV
+
+      # gettext 설치: envsubst를 사용해 taskdef 템플릿에서 환경변수를 치환하기 위함
+      - name: Install gettext for envsubst
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+
+      # task definition 템플릿을 렌더링
+      # 설명: .github/ecs/taskdef.json.template 내의 ${VAR} 플레이스홀더를 envsubst로 대체하여 실제 등록할 JSON을 만듭니다.
+      # 주의: 템플릿 내에는 반드시 'family' 필드 등 필수 값이 채워져야 하며, 해당 값은 TASK_FAMILY 등 secrets/env에서 제공됩니다.
+      - name: Render ECS task definition template (fastapi)
+        env:
+          API_KEY_SECRET_ARN: ${{ secrets.API_KEY_SECRET_ARN }}
+          OPEN_API_KEY_SECRET_ARN: ${{ secrets.OPEN_API_KEY_SECRET_ARN }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          SQS_QUEUE_URL: ${{ secrets.SQS_QUEUE_URL }}
+          PRESIGN_EXPIRES: ${{ secrets.PRESIGN_EXPIRES }}
+          VITE_API_AI: ${{ secrets.VITE_API_AI }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
+          MAX_UPLOAD_MB: ${{ secrets.MAX_UPLOAD_MB }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          TASK_FAMILY: ${{ secrets.TASK_FAMILY }}
+          TASK_ROLE_ARN: ${{ secrets.TASK_ROLE_ARN }}
+          EXECUTION_ROLE_ARN: ${{ secrets.EXECUTION_ROLE_ARN }}
+        run: |
+          set -eux
+          : "${IMAGE_URI:?IMAGE_URI not set}"
+          # Render template into a temp file using envsubst (does not print full JSON to logs)
+          envsubst < .github/ecs/taskdef.json.template > /tmp/taskdef-fastapi.json
+          # Validate minimal required fields with jq (fail fast if missing or secrets not ARN)
+          jq -e '
+            (.family | length > 0) and
+            (.containerDefinitions[0].image | length > 0) and
+            (.containerDefinitions[0].secrets | length > 0) and
+            (all(.containerDefinitions[0].secrets[]; .valueFrom | startswith("arn:aws:secretsmanager:"))) and
+            (all(.containerDefinitions[0].environment[]; .value != ""))
+            ' /tmp/taskdef-fastapi.json
+
+
+      # ECS에 task definition 등록
+      # 설명: register-task-definition API는 JSON 형식의 task 정의를 받아 새 리비전 생성 후 ARN을 반환합니다.
+      # 실패 원인: 템플릿에서 필수 필드(family)가 빈값일 경우 'Family can not be blank' 에러가 발생합니다.
+      - name: Register task definition (fastapi)
+        run: |
+          aws ecs register-task-definition --cli-input-json file:///tmp/taskdef-fastapi.json --region ${{ secrets.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' --output text > /tmp/new-taskdef-fastapi-arn
+          # 등록된 task definition ARN을 다음 스텝에서 사용하도록 환경변수에 저장
+          echo "NEW_TASKDEF_FASTAPI_ARN=$(cat /tmp/new-taskdef-fastapi-arn)" >> $GITHUB_ENV
+
+      # ECS 서비스 업데이트: 서비스가 새 태스크 정의를 가리키도록 업데이트하여 새 배포가 시작되게 합니다.
+      - name: Update ECS service to new task definition (fastapi)
+        run: |
+          aws ecs update-service --cluster ${{ env.CLUSTER_NAME }} --service ${{ env.SERVICE_NAME }} --task-definition "$NEW_TASKDEF_FASTAPI_ARN" --region ${{ secrets.AWS_REGION }}
+
+      # 최근 태스크 목록 출력: 디버깅/검증용
+      - name: Show recent tasks
+        run: |
+          aws ecs list-tasks --cluster ${{ env.CLUSTER_NAME }} --service-name ${{ env.SERVICE_NAME }} --region ${{ secrets.AWS_REGION }} --output json
+
+      - name: Done
+        run: echo "Deployment finished"
