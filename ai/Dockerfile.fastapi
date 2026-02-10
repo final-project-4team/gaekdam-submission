@@ -1,0 +1,32 @@
+# Dockerfile.fastapi
+# Production-ready FastAPI image using Gunicorn + Uvicorn worker
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Install system deps commonly needed to build wheels (adjust if not needed)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    libpq-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r /app/requirements.txt
+
+# Create a non-root user and copy app files
+RUN useradd -m -u 1000 appuser
+COPY --chown=appuser:appuser . /app
+USER appuser
+
+EXPOSE 9000
+
+# Launch with Gunicorn using Uvicorn worker class
+# Adjust workers/timeout based on workload and CPU/memory available in ECS task
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "app.main:app", "--bind", "0.0.0.0:9000", "--workers", "2", "--timeout", "120"]

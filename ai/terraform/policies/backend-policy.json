@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject"],
+      "Resource": "arn:aws:s3:::gaekdam-ai-bot-bucket/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["sqs:SendMessage"],
+      "Resource": "arn:aws:sqs:ap-northeast-2:248189914600:rag-indexing-queue"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+      "Resource": "arn:aws:logs:ap-northeast-2:248189914600:log-group:/aws/ecs/*"
+    }
+  ]
+}
